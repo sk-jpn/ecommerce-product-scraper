@@ -1,51 +1,63 @@
 from types import TracebackType
+from typing import TYPE_CHECKING
 
-from playwright.sync_api import Browser as PlaywrightBrowser
-from playwright.sync_api import Page, Playwright, sync_playwright
+if TYPE_CHECKING:
+    from playwright.async_api import Browser as PlaywrightBrowser
+    from playwright.async_api import Page, Playwright
+
+
+async def _start_playwright() -> "Playwright":
+    from playwright.async_api import async_playwright
+
+    return await async_playwright().start()
 
 
 class Browser:
-    """Manage the lifecycle of a Playwright Chromium browser."""
+    """Manage the lifecycle of an asynchronous Playwright browser."""
 
     def __init__(self, *, headless: bool = True) -> None:
         self.headless = headless
         self._playwright: Playwright | None = None
         self._browser: PlaywrightBrowser | None = None
-        self._page: Page | None = None
 
-    def start(self) -> Page:
-        if self._page is not None:
-            return self._page
-
-        self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch(headless=self.headless)
-        self._page = self._browser.new_page()
-        return self._page
-
-    @property
-    def page(self) -> Page:
-        if self._page is None:
-            raise RuntimeError("Browser has not been started")
-        return self._page
-
-    def close(self) -> None:
+    async def start(self) -> None:
         if self._browser is not None:
-            self._browser.close()
-        if self._playwright is not None:
-            self._playwright.stop()
+            return
 
-        self._page = None
-        self._browser = None
-        self._playwright = None
+        self._playwright = await _start_playwright()
+        try:
+            self._browser = await self._playwright.chromium.launch(
+                headless=self.headless
+            )
+        except BaseException:
+            await self.close()
+            raise
 
-    def __enter__(self) -> "Browser":
-        self.start()
+    async def new_page(self) -> "Page":
+        if self._browser is None:
+            raise RuntimeError("Browser has not been started")
+        return await self._browser.new_page()
+
+    async def close(self) -> None:
+        try:
+            if self._browser is not None:
+                await self._browser.close()
+        finally:
+            self._browser = None
+            try:
+                if self._playwright is not None:
+                    await self._playwright.stop()
+            finally:
+                self._playwright = None
+
+    async def __aenter__(self) -> "Browser":
+        await self.start()
         return self
 
-    def __exit__(
+    async def __aexit__(
         self,
         exc_type: type[BaseException] | None,
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        self.close()
+        await self.close()

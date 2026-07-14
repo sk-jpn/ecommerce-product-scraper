@@ -13,6 +13,7 @@ A Playwright-based framework for collecting product information from e-commerce 
 
 ## Roadmap
 
+- [x] Async Playwright browser wrapper
 - [ ] Adapter interface
 - [ ] Product model
 - [ ] CSV exporter
